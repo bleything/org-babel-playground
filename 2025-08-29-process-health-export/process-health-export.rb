@@ -17,6 +17,7 @@ filtered = workouts.map do |workout|
   workout.delete 'metadata'
 
   workout.delete 'activeEnergy'
+  workout.delete 'activeEnergyBurned'
   workout.delete 'heartRateRecovery'
 
   workout.delete 'route'
@@ -29,7 +30,7 @@ end
 ### flatten complex keys
 
 targets = %w[
-  activeEnergyBurned distance elevationUp humidity intensity temperature
+  distance elevationUp humidity intensity temperature
 ]
 
 filtered.map! do |workout|

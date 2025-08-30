@@ -30,7 +30,7 @@ you want to keep it.
 You'll also need the data. Use the Auto Export feature in Health Auto Export to
 save a json file of just your workouts. Put that file in this directory called
 ~export.json~. After you run the script at the end you can find the output in
-~out.json~.
+~walks.json~.
 
 There might be sample data available on the internet but I haven't looked. I'll
 add some anonymized samples here later, for reference.
@@ -153,6 +153,7 @@ First let's remove all the fields we don't want:
     workout.delete 'metadata'
 
     workout.delete 'activeEnergy'
+    workout.delete 'activeEnergyBurned'
     workout.delete 'heartRateRecovery'
 
     workout.delete 'route'
@@ -171,7 +172,7 @@ objects and into top level keys.
 
 #+begin_src ruby :noweb-ref flatten-complex-keys
   targets = %w[
-    activeEnergyBurned distance elevationUp humidity intensity temperature
+    distance elevationUp humidity intensity temperature
   ]
 
   filtered.map! do |workout|
