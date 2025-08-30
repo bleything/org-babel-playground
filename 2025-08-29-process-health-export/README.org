@@ -6,29 +6,34 @@
   :header-args: :noweb-sep "\n\n"
   :end:
 
+/note: this is an early draft with several issues, mainly that the code is very/
+/inefficient. I'll clean it all up soon, in the mean time no judgies/
+
 I want to display my Apple Health workouts on my website without giving away any
 sensitive info. I'm using an iOS app called [[https://healthyapps.dev][Health Auto Export]] to export the
-workouts that I record with my Apple watch. It's a simple app and it exports the
-data to JSON in a shape that's pretty easy to work with, but it includes a bunch
-of GPS and biometric data that I'd rather not share.
+workouts as JSON and it returns the data in a format that's pretty much ready to
+use, but it includes a lot of PII that needs to be cleaned up.
 
-In this doc we'll take a look at the format and reshape it into something better
-suited to our purposes, cleaning up and sanitizing along the way.
+Let's take a look at the export format and write a script to clean it up.
 
 ** Prerequisites
 
-To run the Ruby code you'll just need any Ruby with a built-in =json= library. I
-don't think I use any modern features but I only tested on 3.3.x.
+To run the Ruby code you'll need a Ruby with a built-in =json= library. I don't
+think I use any modern features but I only tested on 3.3.x.
 
-To use this document, open it in emacs 24 or later. You'll be prompted to apply
-some unsafe variables. It's complaining about =org-confirm-babel-evalute: nil=
-at the top of the file which disables a confirmation prompt before evaluating a
-code block. Up to you whether you want to keep it.
+To use this document open it in emacs 24 or later, or earlier if you have org
+and babel set up. You'll be prompted to apply some unsafe variables. It's
+complaining about =org-confirm-babel-evalute: nil= at the top of the file which
+disables a confirmation prompt before evaluating a code block. Up to you whether
+you want to keep it.
 
 You'll also need the data. Use the Auto Export feature in Health Auto Export to
 save a json file of just your workouts. Put that file in this directory called
 ~export.json~. After you run [[*The Final Script]] you can find the output in
 ~out.json~.
+
+There might be sample data available on the internet but I haven't looked. I'll
+add some anonymized samples here later, for reference.
 
 ** The Export Data Format
 
@@ -43,7 +48,8 @@ There are a few conventions that the export file follows:
 
 - every workout has an =id= property that contains a UUID
 - timestamps are represented as strings of the format =yyyyy-MM-dd HH:mm:ss Z=
-- numbers are almost always floats with many decimal places
+- numbers are (almost[fn:: except humidity]) always floats with many decimal
+  places
 
 Some metrics are provided in an expanded format, presumably to allow for
 localized units. We'll revisit these later:
@@ -70,7 +76,7 @@ bit later but here's the general idea:
 *** Overall Structure
 
 The export file is pretty straightforward. It's a JSON document with a single
-top-level key called =data=. This is an objectcontaining two keys: =workouts=
+top-level key called =data=. This is an object containing two keys: =workouts=
 and =metrics=. In my exports =metrics= is always empty so we're going to ignore
 it for now.
 
@@ -91,12 +97,12 @@ arrays of sampled metrics. Here's a full list of what's in the export I'm
 looking at right now:
 
 - simple keys
-  - =id= -- string (uuid)
-  - =name= -- string ("Outdoor Walk")
-  - =start= -- timestamp ("2025-08-24 07:25:22 -0700")
-  - =end= -- timestamp (as above)
+  - =id= -- string
+  - =name= -- string (e.g. "Outdoor Walk")
+  - =start= -- timestamp
+  - =end= -- timestamp
   - =duration= -- float (seconds)
-  - =location= -- string ("Outdoor")
+  - =location= -- string (e.g. "Outdoor")
 
 - complex keys
   - =activeEnergyBurned= -- float (kcal)
@@ -114,8 +120,6 @@ looking at right now:
   - =stepCount=
   - =walkingAndRunningDistance=
 
-We'll get back to the structure of the sampled fields in a bit.
-
 I've noticed that export fields are sometimes excluded if there's no data. For
 example, on a walk with no elevation change the =elevationUp= key might be
 missing or empty. That means that there might be fields missing from this one
@@ -124,9 +128,10 @@ get back to that.
 
 ** Processing the data
 
-Let's load up the export data and get to work. The plan here is to iterate over
-the exported data and cherry-pick the stuff we want. Along the way we'll also
-reshape it to make it more convenient to work with and anonymize some of it.
+Let's load up the export data and get to work. To briefly recap, the plan here
+is to iterate over the exported data and cherry-pick the stuff we want. Along
+the way we'll also reshape it to make it more convenient to work with and
+anonymize some of it.
 
 *** Step 0: Loading and Basic Cleanup
 

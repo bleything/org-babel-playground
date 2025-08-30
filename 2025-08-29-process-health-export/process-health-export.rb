@@ -79,7 +79,7 @@ new_size = File.size("out.json")
 # cast these to floats so we get more resolution for the percentage calc
 reduction = (old_size - new_size).to_f / old_size.to_f
 
-"Processed %i workouts. File size reduced by %.2f%%, from %i to %i bytes" % [
+puts "Processed %i workouts. File size reduced by %.2f%%, from %i to %i bytes" % [
   filtered.count,
   reduction * 100.0,
   old_size,
