@@ -29,7 +29,7 @@ you want to keep it.
 
 You'll also need the data. Use the Auto Export feature in Health Auto Export to
 save a json file of just your workouts. Put that file in this directory called
-~export.json~. After you run [[*The Final Script]] you can find the output in
+~export.json~. After you run the script at the end you can find the output in
 ~out.json~.
 
 There might be sample data available on the internet but I haven't looked. I'll
