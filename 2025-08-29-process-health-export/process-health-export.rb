@@ -29,7 +29,7 @@ end
 ### flatten complex keys
 
 targets = %w[
-  activeEnergyBurned distance elevationUp humidity intensity temperature
+  distance elevationUp humidity intensity temperature
 ]
 
 filtered.map! do |workout|

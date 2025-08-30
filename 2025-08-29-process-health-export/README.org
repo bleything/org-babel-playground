@@ -153,6 +153,7 @@ First let's remove all the fields we don't want:
     workout.delete 'metadata'
 
     workout.delete 'activeEnergy'
+    workout.delete 'activeEnergyBurned'
     workout.delete 'heartRateRecovery'
 
     workout.delete 'route'
@@ -171,7 +172,7 @@ objects and into top level keys.
 
 #+begin_src ruby :noweb-ref flatten-complex-keys
   targets = %w[
-    activeEnergyBurned distance elevationUp humidity intensity temperature
+    distance elevationUp humidity intensity temperature
   ]
 
   filtered.map! do |workout|
