@@ -1,0 +1,290 @@
+# -*- truncate-lines: nil; org-confirm-babel-evaluate: nil -*-
+#+startup: show3levels indent
+
+* Processing Apple Health Exports
+  :properties:
+  :header-args: :noweb-sep "\n\n"
+  :end:
+
+I want to display my Apple Health workouts on my website without giving away any
+sensitive info. I'm using an iOS app called [[https://healthyapps.dev][Health Auto Export]] to export the
+workouts that I record with my Apple watch. It's a simple app and it exports the
+data to JSON in a shape that's pretty easy to work with, but it includes a bunch
+of GPS and biometric data that I'd rather not share.
+
+In this doc we'll take a look at the format and reshape it into something better
+suited to our purposes, cleaning up and sanitizing along the way.
+
+** Prerequisites
+
+To run the Ruby code you'll just need any Ruby with a built-in =json= library. I
+don't think I use any modern features but I only tested on 3.3.x.
+
+To use this document, open it in emacs 24 or later. You'll be prompted to apply
+some unsafe variables. It's complaining about =org-confirm-babel-evalute: nil=
+at the top of the file which disables a confirmation prompt before evaluating a
+code block. Up to you whether you want to keep it.
+
+You'll also need the data. Use the Auto Export feature in Health Auto Export to
+save a json file of just your workouts. Put that file in this directory called
+~export.json~. After you run [[*The Final Script]] you can find the output in
+~out.json~.
+
+** The Export Data Format
+
+The author of Health Auto Export kindly provides [[https://github.com/Lybron/health-auto-export/wiki/API-Export---JSON-Format#workouts][detailed documentation]] for the
+export format but it doesn't fully match up with what I'm seeing when I use the
+app. Keep a tab open to that for reference but I'll go over the relevant bits
+below.
+
+*** Conventions
+
+There are a few conventions that the export file follows:
+
+- every workout has an =id= property that contains a UUID
+- timestamps are represented as strings of the format =yyyyy-MM-dd HH:mm:ss Z=
+- numbers are almost always floats with many decimal places
+
+Some metrics are provided in an expanded format, presumably to allow for
+localized units. We'll revisit these later:
+
+#+begin_src json
+"activeEnergyBurned" : {
+    "qty" : 275.08747574094002,
+    "units" : "kcal"
+},
+#+end_src
+
+For metrics that are sampled periodically like heart rate or GPS route results
+are provided as an array of objects. We'll look at several examples in detail a
+bit later but here's the general idea:
+
+#+begin_src json
+"heartRateData" : [
+    { sample: 1 },
+    { sample: 2 },
+    ...
+],
+#+end_src
+
+*** Overall Structure
+
+The export file is pretty straightforward. It's a JSON document with a single
+top-level key called =data=. This is an objectcontaining two keys: =workouts=
+and =metrics=. In my exports =metrics= is always empty so we're going to ignore
+it for now.
+
+#+begin_src json
+  {
+    "data" : {
+      "workouts": [...],
+      "metrics": []
+    }
+  }
+#+end_src
+
+*** Workout Structure
+
+=workouts= is an array of objects that each represent a single workout. It
+contains a few simple keys, a bunch of the expanded metrics, and a handful of
+arrays of sampled metrics. Here's a full list of what's in the export I'm
+looking at right now:
+
+- simple keys
+  - =id= -- string (uuid)
+  - =name= -- string ("Outdoor Walk")
+  - =start= -- timestamp ("2025-08-24 07:25:22 -0700")
+  - =end= -- timestamp (as above)
+  - =duration= -- float (seconds)
+  - =location= -- string ("Outdoor")
+
+- complex keys
+  - =activeEnergyBurned= -- float (kcal)
+  - =distance= -- float (mi)
+  - =elevationUp= -- float (ft)
+  - =humidity= -- int (percent)
+  - =intensity= -- float (kcal/hr*kg)
+  - =metadata= -- object (always empty in my exports)
+  - =temperature= -- float (degF)
+
+- sampled
+  - =activeEnergy=
+  - =heartRateData=
+  - =heartRateRecovery=
+  - =stepCount=
+  - =walkingAndRunningDistance=
+
+We'll get back to the structure of the sampled fields in a bit.
+
+I've noticed that export fields are sometimes excluded if there's no data. For
+example, on a walk with no elevation change the =elevationUp= key might be
+missing or empty. That means that there might be fields missing from this one
+too. It might be worth analyzing what we have to look for other fields but we'll
+get back to that.
+
+** Processing the data
+
+Let's load up the export data and get to work. The plan here is to iterate over
+the exported data and cherry-pick the stuff we want. Along the way we'll also
+reshape it to make it more convenient to work with and anonymize some of it.
+
+*** Step 0: Loading and Basic Cleanup
+
+#+begin_src ruby :noweb-ref load
+  require 'json'
+
+  export = JSON.load_file("export.json")
+  workouts = export['data']['workouts']
+#+end_src
+
+First let's remove all the fields we don't want:
+
+#+begin_src ruby :noweb-ref cleanup
+  filtered = workouts.map do |workout|
+    workout.delete 'location'
+    workout.delete 'name'
+
+    workout.delete 'intensity'
+    workout.delete 'metadata'
+
+    workout.delete 'activeEnergy'
+    workout.delete 'heartRateRecovery'
+
+    workout.delete 'route'
+    workout.delete 'heartRateData'
+    workout.delete 'walkingAndRunningDistance'
+
+    workout
+  end
+#+end_src
+
+*** Step 1: Flatten Complex Keys
+
+In the website code we do a lot of sums and averages of the complex fields so to
+make writing that code more convenient we're going to pull everything out of the
+objects and into top level keys.
+
+#+begin_src ruby :noweb-ref flatten-complex-keys
+  targets = %w[
+    activeEnergyBurned distance elevationUp humidity intensity temperature
+  ]
+
+  filtered.map! do |workout|
+    targets.each do |target|
+      next unless workout[target]
+
+      workout["#{target}_qty"] = workout[target]['qty']
+      workout["#{target}_units"] = workout[target]['units']
+      workout.delete target
+    end
+
+    workout
+  end
+#+end_src
+
+*** Step 2: Aggregate Step Count
+
+=stepCount= is recorded as a series of samples at 1 second intervals. A single
+record looks like this:
+
+#+begin_src js
+  {
+      "source": "watch|phone",
+      "date": "2025-08-24 06:31:34 -0700",
+      "qty": 86.08579514803237,
+      "units": "steps"
+  },
+#+end_src
+
+=source= is a pipe-separated list of devices that participated in the sample,
+given as the name of the device. I've redacted my device names in this
+example. Everything else is what it looks like, but I'm not sure why =units= is
+in there. I'm not sure what other units there could be?
+
+We're going to want the sampled data later for drawing graphs so we won't remove
+it entirely but we are going to add up the steps now and insert it as a field at
+the top level, just to save us some complexity in the frontend code. We'll also
+strip out the =source= and =units= fields to cut down on file size. No need to
+carry around a bunch of strings we don't need.
+
+#+begin_src ruby :noweb-ref aggregate-step-count
+  filtered.map! do |workout|
+    next unless workout['stepCount']
+
+    # this should almost always be "steps" and I'd be tempted to hard-code that but
+    # without a way to be sure I think it's safer to just leave a trap in here so we
+    # can address it if it comes up
+    units = workout['stepCount'].map {|sc| sc['units'] }.uniq
+    raise "unknown stepCount units: #{units.join ' '}" if units.size > 1
+
+    workout['stepCount_units'] = units.first
+    workout['stepCount_qty'] = workout['stepCount'].map {|sc| sc['qty'] }.sum
+
+    workout['stepCount'].map! do |sc|
+      sc.delete 'source'
+      sc.delete 'units'
+
+      sc
+    end
+
+    workout
+  end
+#+end_src
+
+*** Wrapping Up
+
+Alright, that's it. Let's save our new file and report what we've done. The
+=JSON.pretty_generate= version is useful if you're making changes to this
+script, otherwise you should use the =to_json= version. The space savings are
+significant.
+
+#+begin_src ruby :noweb-ref save-and-report
+  File.open('out.json', 'w') {|f| f.puts filtered.to_json }
+  # File.open('out.json', 'w') {|f| f.puts JSON.pretty_generate(filtered) }
+
+  old_size = File.size("export.json")
+  new_size = File.size("out.json")
+
+  # cast these to floats so we get more resolution for the percentage calc
+  reduction = (old_size - new_size).to_f / old_size.to_f
+
+  puts "Processed %i workouts. File size reduced by %.2f%%, from %i to %i bytes" % [
+    filtered.count,
+    reduction * 100.0,
+    old_size,
+    new_size
+  ]
+#+end_src
+
+** The Final Script
+
+If you're reading this in emacs you should be able to put your point in this
+code block and press ~C-c C-c~ to run it. You'll know it worked when a
+~#+RESULTS:~ block appears below it. It might take a few seconds.
+
+#+begin_src ruby :tangle process-health-export.rb :noweb yes :results output
+  #!/usr/bin/env ruby
+
+  ### WARNING: This file is generated by babel. Changes will be lost.
+
+  <<load>>
+
+  ### remove unwanted fields
+
+  <<cleanup>>
+
+  ### flatten complex keys
+
+  <<flatten-complex-keys>>
+
+  ### aggregate step count
+
+  <<aggregate-step-count>>
+
+  ### save and report
+
+  <<save-and-report>>
+#+end_src
+
+#+RESULTS:
+: Processed 59 workouts. File size reduced by 99.78%, from 108285564 to 240643 bytes
