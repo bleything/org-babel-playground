@@ -1,0 +1,14 @@
+* org-babel-playground
+
+Experiments with literate programming in emacs using [[https://orgmode.org/worg/org-contrib/babel/][Babel]] in [[https://orgmode.org/][Org Mode]]. See
+individual files and directories for more.
+
+** License
+
+All rights reserved.
+
+My intention for this repo is to learn these tools in the open. Everything in
+here should be considered experimental. If I find or make anything interesting
+I'll release it elsewhere under the MIT license and leave pointers here.
+
+If you really, really want to use something from this repo, email me.
