@@ -35,7 +35,7 @@ save a json file of just your workouts. Put that file in this directory called
 There might be sample data available on the internet but I haven't looked. I'll
 add some anonymized samples here later, for reference.
 
-** The Export Data Format
+** Input Format
 
 The author of Health Auto Export kindly provides [[https://github.com/Lybron/health-auto-export/wiki/API-Export---JSON-Format#workouts][detailed documentation]] for the
 export format but it doesn't fully match up with what I'm seeing when I use the
@@ -126,6 +126,90 @@ missing or empty. That means that there might be fields missing from this one
 too. It might be worth analyzing what we have to look for other fields but we'll
 get back to that.
 
+** Output Format
+
+*** tl;dr:
+
+Each discrete walk will be represented by a single json file. Files will be
+placed into directories by year and month. The filenames will be the walk's
+UUID. Note that the UUID is downcased; this will be done during import for
+consistency. Example filename:
+
+~output/2025/07/00000000-0000-0000-0000-000000000000.json~
+
+See Data Structure below for a description of each file's internal structure.
+
+*** Background
+
+I'm using [[https://astro.build][Astro]] for my site and their [[https://docs.astro.build/en/guides/content-collections/][Content Collections]] feature is perfect for
+this sort of kind of application. It provides a framework for loading data from
+a variety of formats and exposing that data to your site's code in a structured
+way.
+
+Astro provides "[[https://docs.astro.build/en/guides/content-collections/#built-in-loaders][loaders]]" for a single file containing many records or a
+directory of files that each represent a single record. You can also write a
+custom loader but we won't need that here.
+
+There are advantages to each approach. A single file keeps our data contained
+and easy to update at the cost of a data file that's difficult to work with for
+development and debugging. Multiple files are easier to work with but somewhat
+more complicated to update and take up a larger footprint on disk in terms of
+files/directories.
+
+I decided that the convenience of multiple files, especially while developing
+the site, outweighed the (minor) downsides. We will keep the output contained to
+a single directory so it stays isolated, and organize it in a way that
+prioritizes ergonomics.
+
+*** Data Structure
+
+Walks are represented as json files. I selected json mainly for convenience
+since we're loading it in a javascript framework. It's also easy to minify and
+compress in case we need to worry about file size down the road.
+
+Here's a real example from my data, reformatted slightly for readability:
+
+#+begin_src json
+  {
+    "id": "464fff28-04e6-43de-b800-20e3a2faef85",
+    "date": "2025-06-30",
+    "time_of_day": "morning",
+    "duration": 3921.432277083397,
+    "distance_qty": 1.762951171645866,
+    "distance_units": "mi",
+    "elevationUp_qty": 65.48556430446195,
+    "elevationUp_units": "ft",
+    "humidity_qty": 76,
+    "humidity_units": "%",
+    "temperature_qty": 63.022949600215476,
+    "temperature_units": "degF",
+    "stepCount_units": "count",
+    "stepCount_qty": 3315.4576812677615,
+    "stepCount": [
+      {
+        "id": 1,
+        "qty": 33.38933802837027
+      },
+      {
+        "id": 2,
+        "qty": 88.968452386377
+      },
+      {
+        "id": 3,
+        "qty": 88.9684523863778
+      },
+      ...
+    ]
+  }
+#+end_src
+
+A few notes:
+
+- fields with ~_qty~ and ~_units~ are flattened from complex keys in the input
+  data. See Workout Structure above for details.
+- ~stepCount~ is the only sampled field (again, see Workout Structure) but there
+  will be more in the future.
+
 ** Processing the data
 
 Let's load up the export data and get to work. To briefly recap, the plan here
@@ -142,7 +226,6 @@ anonymize some of it.
   workouts = export['data']['workouts']
 #+end_src
 
-
 First we want to replace the =start= and =end= timestamps with a =date= and
 =time_of_day= field. This is an effort to balance privacy with exposing relevant
 data. I don't necessarily want to advertise when I'm out of my house, but I do
@@ -152,10 +235,12 @@ The time of day calculation is not very smart. For example, a walk that starts
 at 11:59am will be reported as a morning walk. I will probably revisit this
 later.
 
-We'll also delete a bunch of fields we don't want.
+We'll also downcase the =id= and delete a bunch of fields we don't want.
 
 #+begin_src ruby :noweb-ref cleanup
   filtered = workouts.map do |workout|
+    workout['id'].downcase!
+
     start = Time.new(workout.delete 'start')
     workout.delete 'end'
 
@@ -286,17 +371,39 @@ script, otherwise you should use the =to_json= version. The space savings are
 significant.
 
 #+begin_src ruby :noweb-ref save-and-report
-  File.open('walks.json', 'w') {|f| f.puts filtered.to_json }
-  # File.open('walks.json', 'w') {|f| f.puts JSON.pretty_generate(filtered) }
+  require 'fileutils'
+  FileUtils.rm_rf 'output'
+
+  new_size = 0
+
+  output_walks = filtered.compact
+
+  output_walks.each do |walk|
+    year = walk['date'][0..3]
+    month = walk['date'][5..6]
+
+    path = File.join "output", year, month, "#{walk['id']}.json"
+
+    FileUtils.mkdir_p File.dirname(path)
+    File.open(path, "w") do |f|
+      # whitespace removed
+      # out = walk.to_json
+
+      # pretty-printed
+      out = JSON.pretty_generate(walk)
+
+      f.puts out
+      new_size += f.size
+    end
+  end
 
   old_size = File.size("export.json")
-  new_size = File.size("walks.json")
 
   # cast these to floats so we get more resolution for the percentage calc
   reduction = (old_size - new_size).to_f / old_size.to_f
 
   puts "Processed %i workouts. File size reduced by %.2f%%, from %i to %i bytes" % [
-    filtered.count,
+    output_walks.length,
     reduction * 100.0,
     old_size,
     new_size
@@ -334,4 +441,4 @@ code block and press ~C-c C-c~ to run it. You'll know it worked when a
 #+end_src
 
 #+RESULTS:
-: Processed 59 workouts. File size reduced by 99.78%, from 108285564 to 240643 bytes
+: Processed 75 workouts. File size reduced by 92.83%, from 4253222 to 304985 bytes

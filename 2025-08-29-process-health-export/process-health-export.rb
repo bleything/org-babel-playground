@@ -10,6 +10,8 @@ workouts = export['data']['workouts']
 ### remove unwanted fields
 
 filtered = workouts.map do |workout|
+  workout['id'].downcase!
+
   start = Time.new(workout.delete 'start')
   workout.delete 'end'
 
@@ -99,17 +101,39 @@ end
 
 ### save and report
 
-File.open('walks.json', 'w') {|f| f.puts filtered.to_json }
-# File.open('walks.json', 'w') {|f| f.puts JSON.pretty_generate(filtered) }
+require 'fileutils'
+FileUtils.rm_rf 'output'
+
+new_size = 0
+
+output_walks = filtered.compact
+
+output_walks.each do |walk|
+  year = walk['date'][0..3]
+  month = walk['date'][5..6]
+
+  path = File.join "output", year, month, "#{walk['id']}.json"
+
+  FileUtils.mkdir_p File.dirname(path)
+  File.open(path, "w") do |f|
+    # whitespace removed
+    # out = walk.to_json
+
+    # pretty-printed
+    out = JSON.pretty_generate(walk)
+
+    f.puts out
+    new_size += f.size
+  end
+end
 
 old_size = File.size("export.json")
-new_size = File.size("walks.json")
 
 # cast these to floats so we get more resolution for the percentage calc
 reduction = (old_size - new_size).to_f / old_size.to_f
 
 puts "Processed %i workouts. File size reduced by %.2f%%, from %i to %i bytes" % [
-  filtered.count,
+  output_walks.length,
   reduction * 100.0,
   old_size,
   new_size
