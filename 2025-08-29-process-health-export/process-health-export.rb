@@ -71,11 +71,11 @@ end
 
 ### save and report
 
-File.open('out.json', 'w') {|f| f.puts filtered.to_json }
-# File.open('out.json', 'w') {|f| f.puts JSON.pretty_generate(filtered) }
+File.open('walks.json', 'w') {|f| f.puts filtered.to_json }
+# File.open('walks.json', 'w') {|f| f.puts JSON.pretty_generate(filtered) }
 
 old_size = File.size("export.json")
-new_size = File.size("out.json")
+new_size = File.size("walks.json")
 
 # cast these to floats so we get more resolution for the percentage calc
 reduction = (old_size - new_size).to_f / old_size.to_f
