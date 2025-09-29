@@ -10,6 +10,26 @@ workouts = export['data']['workouts']
 ### remove unwanted fields
 
 filtered = workouts.map do |workout|
+  start = Time.new(workout.delete 'start')
+  workout.delete 'end'
+
+  workout['date'] = start.strftime("%Y-%m-%d")
+
+  workout['time_of_day'] = case start.hour
+                           when 0..4
+                             "night"
+                           when 5..11
+                             "morning"
+                           when 12..16
+                             "afternoon"
+                           when 18..21
+                             "evening"
+                           when 22..24
+                             "night"
+                           else
+                             "FIXME"
+                           end
+
   workout.delete 'location'
   workout.delete 'name'
 

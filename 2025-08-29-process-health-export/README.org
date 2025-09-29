@@ -142,10 +142,40 @@ anonymize some of it.
   workouts = export['data']['workouts']
 #+end_src
 
-First let's remove all the fields we don't want:
+
+First we want to replace the =start= and =end= timestamps with a =date= and
+=time_of_day= field. This is an effort to balance privacy with exposing relevant
+data. I don't necessarily want to advertise when I'm out of my house, but I do
+want to be able to know if it was morning, afternoon, etc.
+
+The time of day calculation is not very smart. For example, a walk that starts
+at 11:59am will be reported as a morning walk. I will probably revisit this
+later.
+
+We'll also delete a bunch of fields we don't want.
 
 #+begin_src ruby :noweb-ref cleanup
   filtered = workouts.map do |workout|
+    start = Time.new(workout.delete 'start')
+    workout.delete 'end'
+
+    workout['date'] = start.strftime("%Y-%m-%d")
+
+    workout['time_of_day'] = case start.hour
+                             when 0..4
+                               "night"
+                             when 5..11
+                               "morning"
+                             when 12..16
+                               "afternoon"
+                             when 18..21
+                               "evening"
+                             when 22..24
+                               "night"
+                             else
+                               "FIXME"
+                             end
+
     workout.delete 'location'
     workout.delete 'name'
 
