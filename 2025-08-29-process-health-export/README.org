@@ -239,12 +239,19 @@ in there. I'm not sure what other units there could be?
 
 We're going to want the sampled data later for drawing graphs so we won't remove
 it entirely but we are going to add up the steps now and insert it as a field at
-the top level, just to save us some complexity in the frontend code. We'll also
-strip out the =source= and =units= fields to cut down on file size. No need to
-carry around a bunch of strings we don't need.
+the top level, just to save us some complexity in the frontend code.
+
+We don't want to leak the exact times of the walks so we'll also replace the
+=date= field with an =id= field that will be a simple incrementing integer.
+We'll also strip out the =source= and =units= fields to cut down on file
+size. No need to carry around a bunch of strings we don't need.
 
 #+begin_src ruby :noweb-ref aggregate-step-count
+
   filtered.map! do |workout|
+    # this will insert a nil into the array if the workout doesn't have a
+    # stepCount field but that's fine because if there's no steps there's nothing
+    # to display later. we'll need to filter those nils out later
     next unless workout['stepCount']
 
     # this should almost always be "steps" and I'd be tempted to hard-code that but
@@ -256,9 +263,13 @@ carry around a bunch of strings we don't need.
     workout['stepCount_units'] = units.first
     workout['stepCount_qty'] = workout['stepCount'].map {|sc| sc['qty'] }.sum
 
+    sample_count = 0
     workout['stepCount'].map! do |sc|
       sc.delete 'source'
       sc.delete 'units'
+
+      sc.delete 'date'
+      sc['id'] = (sample_count += 1)
 
       sc
     end

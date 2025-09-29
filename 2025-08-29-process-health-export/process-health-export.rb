@@ -67,7 +67,11 @@ end
 
 ### aggregate step count
 
+
 filtered.map! do |workout|
+  # this will insert a nil into the array if the workout doesn't have a
+  # stepCount field but that's fine because if there's no steps there's nothing
+  # to display later. we'll need to filter those nils out later
   next unless workout['stepCount']
 
   # this should almost always be "steps" and I'd be tempted to hard-code that but
@@ -79,9 +83,13 @@ filtered.map! do |workout|
   workout['stepCount_units'] = units.first
   workout['stepCount_qty'] = workout['stepCount'].map {|sc| sc['qty'] }.sum
 
+  sample_count = 0
   workout['stepCount'].map! do |sc|
     sc.delete 'source'
     sc.delete 'units'
+
+    sc.delete 'date'
+    sc['id'] = (sample_count += 1)
 
     sc
   end
