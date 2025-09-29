@@ -251,7 +251,7 @@ We'll also downcase the =id= and delete a bunch of fields we don't want.
                                "night"
                              when 5..11
                                "morning"
-                             when 12..16
+                             when 12..17
                                "afternoon"
                              when 18..21
                                "evening"
@@ -441,4 +441,4 @@ code block and press ~C-c C-c~ to run it. You'll know it worked when a
 #+end_src
 
 #+RESULTS:
-: Processed 75 workouts. File size reduced by 92.83%, from 4253222 to 304985 bytes
+: Processed 75 workouts. File size reduced by 92.87%, from 4253222 to 303339 bytes

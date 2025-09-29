@@ -22,7 +22,7 @@ filtered = workouts.map do |workout|
                              "night"
                            when 5..11
                              "morning"
-                           when 12..16
+                           when 12..17
                              "afternoon"
                            when 18..21
                              "evening"
